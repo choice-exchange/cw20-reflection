@@ -1,11 +1,11 @@
 [package]
 name = "cw20-reflection-treasury"
-version = "0.0.0"
+version = "0.0.1"
 authors = []
-edition = "2018"
+edition = "2021"
 description = ""
 license = "MIT"
-repository = "https://github.com/dojoswap/cw20-reflection"
+repository = "https://github.com/choice-exchange/cw20-reflection"
 homepage = "https://cosmwasm.com"
 documentation = "https://docs.cosmwasm.com"
 
@@ -13,23 +13,31 @@ documentation = "https://docs.cosmwasm.com"
 crate-type = ["cdylib", "rlib"]
 
 [features]
-backtraces = ["cosmwasm-std/backtraces"]
-# use library feature to disable all init/handle/query exports
 library = []
 
 [dependencies]
-cw0 = { version = "0.10.3" } 
-cw2 = { version = "0.13.2" } 
-cw20 = {version = "0.13.2"}
-cw20-base = {version = "0.13.2", features = ["library"]}
-cw-storage-plus  = { version = "0.13.2" } 
-cosmwasm-std = { version = "1.5.0" }
-schemars = "0.8.10"
-serde = { version = "1.0.103", default-features = false, features = ["derive"] }
-thiserror = "1.0.51"
-dojoswap = { path = "../../packages/dojoswap", default-features = false, version = "2.9.0"}
+cw2                = { version = "2.0.0" }
+cw20               = { version = "2.0.0" }
+cw20-base          = { version = "2.0.0" }
+cosmwasm-schema    = { version = "2.2.2" }
+cosmwasm-std       = { version = "2.2.2", features = [
+    "abort",
+    "cosmwasm_1_2",
+    "cosmwasm_1_3",
+    "cosmwasm_1_4",
+    "cosmwasm_2_0",
+    "iterator",
+    "stargate"
+] }
+cw-storage-plus    = { version = "2.0.0" }
+
+schemars           = { version = "0.8.22" }
+serde              = { version = "1.0.219", default-features = false, features = ["derive"] }
+serde-json-wasm    = { version = "1.0.0" }
+serde_json         = { version = "1.0.140" }
+
+hex               = { version = "0.4.3" }
+
+choice               = { path = "../../packages/choice", version = "0.0.1"}
 
 [dev-dependencies]
-# we only need to enable this if we use integration tests
-cosmwasm-schema = { version = "1.0.0" }
-cosmwasm-storage = { version = "1.5.0" }

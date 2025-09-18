@@ -1,7 +1,7 @@
 use cosmwasm_std::testing::{MockApi, MockQuerier, MockStorage, MOCK_CONTRACT_ADDR};
 use cosmwasm_std::{
-    from_binary, from_slice, to_binary, Coin, ContractResult, Empty, OwnedDeps, Querier,
-    QuerierResult, QueryRequest, SystemError, SystemResult, Uint128, WasmQuery,
+    from_json, to_json_binary, Coin, ContractResult, Empty, OwnedDeps, Querier, QuerierResult,
+    QueryRequest, SystemError, SystemResult, Uint128, WasmQuery,
 };
 use std::collections::HashMap;
 use std::marker::PhantomData;
@@ -34,7 +34,7 @@ pub fn mock_dependencies(
 pub struct WasmMockQuerier {
     base: MockQuerier,
     token_querier: TokenQuerier,
-    dojoswap_factory_querier: TerraswapFactoryQuerier,
+    choice_factory_querier: TerraswapFactoryQuerier,
 }
 
 #[derive(Clone, Default)]
@@ -105,7 +105,7 @@ pub(crate) fn native_token_decimals_to_map(
 impl Querier for WasmMockQuerier {
     fn raw_query(&self, bin_request: &[u8]) -> QuerierResult {
         // MockQuerier doesn't support Custom, so we ignore it completely here
-        let request: QueryRequest<Empty> = match from_slice(bin_request) {
+        let request: QueryRequest<Empty> = match from_json(bin_request) {
             Ok(v) => v,
             Err(e) => {
                 return SystemResult::Err(SystemError::InvalidRequest {
@@ -121,17 +121,17 @@ impl Querier for WasmMockQuerier {
 impl WasmMockQuerier {
     pub fn handle_query(&self, request: &QueryRequest<Empty>) -> QuerierResult {
         match &request {
-            QueryRequest::Wasm(WasmQuery::Smart { contract_addr, msg }) => match from_binary(msg) {
+            QueryRequest::Wasm(WasmQuery::Smart { contract_addr, msg }) => match from_json(msg) {
                 Ok(FactoryQueryMsg::Pair { asset_infos }) => {
                     let key = [asset_infos[0].to_string(), asset_infos[1].to_string()].join("");
                     let mut sort_key: Vec<char> = key.chars().collect();
                     sort_key.sort_by(|a, b| b.cmp(a));
                     match self
-                        .dojoswap_factory_querier
+                        .choice_factory_querier
                         .pairs
                         .get(&String::from_iter(sort_key.iter()))
                     {
-                        Some(v) => SystemResult::Ok(ContractResult::Ok(to_binary(v).unwrap())),
+                        Some(v) => SystemResult::Ok(ContractResult::Ok(to_json_binary(v).unwrap())),
                         None => SystemResult::Err(SystemError::InvalidRequest {
                             error: "No pair info exists".to_string(),
                             request: msg.as_slice().into(),
@@ -140,12 +140,12 @@ impl WasmMockQuerier {
                 }
                 Ok(FactoryQueryMsg::NativeTokenDecimals { denom }) => {
                     match self
-                        .dojoswap_factory_querier
+                        .choice_factory_querier
                         .native_token_decimals
                         .get(&denom)
                     {
                         Some(decimals) => SystemResult::Ok(ContractResult::Ok(
-                            to_binary(&NativeTokenDecimalsResponse {
+                            to_json_binary(&NativeTokenDecimalsResponse {
                                 decimals: *decimals,
                             })
                             .unwrap(),
@@ -156,9 +156,9 @@ impl WasmMockQuerier {
                         }),
                     }
                 }
-                _ => match from_binary(msg) {
+                _ => match from_json(msg) {
                     Ok(PairQueryMsg::Pair {}) => {
-                        SystemResult::Ok(ContractResult::from(to_binary(&PairInfo {
+                        SystemResult::Ok(ContractResult::from(to_json_binary(&PairInfo {
                             asset_infos: [
                                 AssetInfo::NativeToken {
                                     denom: "uluna".to_string(),
@@ -172,21 +172,21 @@ impl WasmMockQuerier {
                             liquidity_token: "liquidity0000".to_string(),
                         })))
                     }
-                    Ok(PairQueryMsg::Simulation { offer_asset }) => {
-                        SystemResult::Ok(ContractResult::from(to_binary(&SimulationResponse {
+                    Ok(PairQueryMsg::Simulation { offer_asset }) => SystemResult::Ok(
+                        ContractResult::from(to_json_binary(&SimulationResponse {
                             return_amount: offer_asset.amount,
                             commission_amount: Uint128::zero(),
                             spread_amount: Uint128::zero(),
-                        })))
-                    }
+                        })),
+                    ),
                     Ok(PairQueryMsg::ReverseSimulation { ask_asset }) => SystemResult::Ok(
-                        ContractResult::from(to_binary(&ReverseSimulationResponse {
+                        ContractResult::from(to_json_binary(&ReverseSimulationResponse {
                             offer_amount: ask_asset.amount,
                             commission_amount: Uint128::zero(),
                             spread_amount: Uint128::zero(),
                         })),
                     ),
-                    _ => match from_binary(msg).unwrap() {
+                    _ => match from_json(msg).unwrap() {
                         Cw20QueryMsg::TokenInfo {} => {
                             let balances: &HashMap<String, Uint128> =
                                 match self.token_querier.balances.get(contract_addr) {
@@ -209,7 +209,7 @@ impl WasmMockQuerier {
                             }
 
                             SystemResult::Ok(ContractResult::Ok(
-                                to_binary(&TokenInfoResponse {
+                                to_json_binary(&TokenInfoResponse {
                                     name: "mAAPL".to_string(),
                                     symbol: "mAAPL".to_string(),
                                     decimals: 8,
@@ -237,7 +237,7 @@ impl WasmMockQuerier {
                                 Some(v) => *v,
                                 None => {
                                     return SystemResult::Ok(ContractResult::Ok(
-                                        to_binary(&Cw20BalanceResponse {
+                                        to_json_binary(&Cw20BalanceResponse {
                                             balance: Uint128::zero(),
                                         })
                                         .unwrap(),
@@ -246,7 +246,7 @@ impl WasmMockQuerier {
                             };
 
                             SystemResult::Ok(ContractResult::Ok(
-                                to_binary(&Cw20BalanceResponse { balance }).unwrap(),
+                                to_json_binary(&Cw20BalanceResponse { balance }).unwrap(),
                             ))
                         }
 
@@ -264,7 +264,7 @@ impl WasmMockQuerier {
         WasmMockQuerier {
             base,
             token_querier: TokenQuerier::default(),
-            dojoswap_factory_querier: TerraswapFactoryQuerier::default(),
+            choice_factory_querier: TerraswapFactoryQuerier::default(),
         }
     }
 
@@ -273,18 +273,20 @@ impl WasmMockQuerier {
         self.token_querier = TokenQuerier::new(balances);
     }
 
-    // configure the dojoswap pair
-    pub fn with_dojoswap_factory(
+    // configure the choice pair
+    pub fn with_choice_factory(
         &mut self,
         pairs: &[(&String, &PairInfo)],
         native_token_decimals: &[(String, u8)],
     ) {
-        self.dojoswap_factory_querier = TerraswapFactoryQuerier::new(pairs, native_token_decimals);
+        self.choice_factory_querier = TerraswapFactoryQuerier::new(pairs, native_token_decimals);
     }
 
     pub fn with_balance(&mut self, balances: &[(&String, Vec<Coin>)]) {
         for (addr, balance) in balances {
-            self.base.update_balance(addr.to_string(), balance.clone());
+            self.base
+                .bank
+                .update_balance(addr.to_string(), balance.clone());
         }
     }
 }
@@ -301,8 +303,8 @@ mod mock_exception {
         assert_eq!(
             deps.querier.raw_query(&[]),
             SystemResult::Err(SystemError::InvalidRequest {
-                error: "Parsing query request: Error parsing into type cosmwasm_std::query::QueryRequest<cosmwasm_std::results::empty::Empty>: EOF while parsing a JSON value.".to_string(),
-                request: Binary(vec![])
+                error: "Parsing query request: Error parsing into type cosmwasm_std::query::QueryRequest: EOF while parsing a JSON value.".to_string(),
+                request: Binary::new(vec![])
             })
         );
     }
@@ -311,7 +313,7 @@ mod mock_exception {
     fn none_factory_pair_will_err() {
         let deps = mock_dependencies(&[]);
 
-        let msg = to_binary(&FactoryQueryMsg::Pair {
+        let msg = to_json_binary(&FactoryQueryMsg::Pair {
             asset_infos: [
                 AssetInfo::NativeToken {
                     denom: "uluna".to_string(),
@@ -339,7 +341,7 @@ mod mock_exception {
     fn none_tokens_info_will_err() {
         let deps = mock_dependencies(&[]);
 
-        let msg = to_binary(&Cw20QueryMsg::TokenInfo {}).unwrap();
+        let msg = to_json_binary(&Cw20QueryMsg::TokenInfo {}).unwrap();
 
         assert_eq!(
             deps.querier
@@ -358,7 +360,7 @@ mod mock_exception {
     fn none_tokens_balance_will_err() {
         let deps = mock_dependencies(&[]);
 
-        let msg = to_binary(&Cw20QueryMsg::Balance {
+        let msg = to_json_binary(&Cw20QueryMsg::Balance {
             address: "address0000".to_string(),
         })
         .unwrap();
@@ -381,7 +383,7 @@ mod mock_exception {
     fn none_tokens_minter_will_panic() {
         let deps = mock_dependencies(&[]);
 
-        let msg = to_binary(&Cw20QueryMsg::Minter {}).unwrap();
+        let msg = to_json_binary(&Cw20QueryMsg::Minter {}).unwrap();
 
         deps.querier
             .handle_query(&QueryRequest::Wasm(WasmQuery::Smart {

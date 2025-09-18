@@ -1,6 +1,6 @@
 # Terraswap: Common Types
 
-This is a collection of common types and the queriers which are commonly used in dojoswap contracts.
+This is a collection of common types and the queriers which are commonly used in choice contracts.
 
 ## Data Types
 
@@ -90,7 +90,7 @@ pub fn query_native_decimals(
 
 ### Pair Info Querier From Factory
 
-It also provides the query interface to query avaliable dojoswap pair contract info. Any contract can query pair info to dojoswap factory contract.
+It also provides the query interface to query avaliable choice pair contract info. Any contract can query pair info to choice factory contract.
 
 ```rust
 pub fn query_pair_info(
@@ -102,7 +102,7 @@ pub fn query_pair_info(
 
 ### Pair Info Querier From Pair
 
-It also provides the query interface to query avaliable dojoswap pair contract info. Any contract can query pair info to pair contract.
+It also provides the query interface to query avaliable choice pair contract info. Any contract can query pair info to pair contract.
 
 ```rust
 pub fn query_pair_info_from_pair(

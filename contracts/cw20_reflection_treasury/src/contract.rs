@@ -1,35 +1,35 @@
-use std::ops::{Div, Mul, Sub};
+use std::ops::{Div, Sub};
 
+use choice::pair::SimulationResponse;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    coin, from_json, to_json_binary, Addr, Api, Binary, Decimal, Deps, DepsMut, Env, MessageInfo,
-    QuerierWrapper, QueryRequest, Response, StdError, StdResult, Storage, Uint128, WasmMsg,
-    WasmQuery,
+    coin, from_json, to_json_binary, Addr, Api, BankMsg, Binary, CosmosMsg, Decimal, Deps, DepsMut,
+    Env, MessageInfo, QuerierWrapper, QueryRequest, Response, StdError, StdResult, Storage,
+    Uint128, WasmMsg, WasmQuery,
 };
 use cw20::{BalanceResponse, Cw20ExecuteMsg};
-use dojoswap::pair::SimulationResponse;
 
 use cw2::set_contract_version;
 
 use crate::msg::{
     Cw20HookMsg, Cw20ReceiveMsg, ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg, TokenQueryMsg,
 };
+use choice::asset::{Asset, AssetInfo, PairInfo};
+use choice::pair::QueryMsg as PairQueryMsg;
 use cw20_base::ContractError;
 use cw_storage_plus::Item;
-use dojoswap::asset::{Asset, AssetInfo, PairInfo};
-use dojoswap::pair::QueryMsg as PairQueryMsg;
 
 // version info for migration info
-const CONTRACT_NAME: &str = "dojoswap:reflection";
+const CONTRACT_NAME: &str = "choice:reflection";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-pub const MIN_LIQUIFY_AMT: Item<Uint128> = Item::new("min_liquify_amt"); // minimum number of babyTOKEN before liquifying
+pub const MIN_LIQUIFY_AMT: Item<Uint128> = Item::new("min_liquify_amt"); // minimum number of reflection token before turning into liquidity
 
 pub const ADMIN: Item<String> = Item::new("admin");
 pub const TOKEN: Item<Addr> = Item::new("token");
 pub const ROUTER: Item<String> = Item::new("router");
-pub const LIQUIDTY_TOKEN: Item<String> = Item::new("liquidity_token");
+pub const LIQUIDITY_TOKEN: Item<String> = Item::new("liquidity_token");
 pub const LIQUIDITY_PAIR_CONTRACT: Item<String> = Item::new("liquidity_pair_contract");
 pub const REFLECTION_PAIR_CONTRACT: Item<String> = Item::new("reflection_pair_contract");
 pub const LIQUIDITY_PAIR: Item<[AssetInfo; 2]> = Item::new("liquidity_pair");
@@ -78,7 +78,7 @@ pub fn execute(
         }
         // ExecuteMsg::SetToken { address } => set_token(deps, env, info, address),
         ExecuteMsg::Liquify {} => liquify_treasury(&deps.querier, env, deps.storage),
-        ExecuteMsg::WithdrawToken { token } => withdraw_token(deps, env, info, token),
+        ExecuteMsg::WithdrawToken { asset } => withdraw_token(deps, env, info, asset),
     }
 }
 
@@ -95,7 +95,7 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
 pub fn receive_cw20(
     querier: &QuerierWrapper,
     storage: &mut dyn Storage,
-    api: &dyn Api,
+    _api: &dyn Api,
     env: Env,
     info: MessageInfo,
     cw20_msg: Cw20ReceiveMsg,
@@ -105,26 +105,26 @@ pub fn receive_cw20(
     match from_json(&cw20_msg.msg) {
         Ok(Cw20HookMsg::Liquify {}) => {
             // only token contract can execute this message
-            if token.to_string() != api.addr_validate(info.sender.as_str())? {
+            if token != info.sender {
                 return Err(ContractError::Unauthorized {});
             }
 
-            liquify_treasury(&querier, env.clone(), storage)
+            liquify_treasury(querier, env.clone(), storage)
         }
         Err(_) => Err(ContractError::Unauthorized {}),
     }
 }
 
 /// Core function of the treasury. Will be used to liquify, burn, and reflect tokens in one operation
-/// 1. Liquify babyTOKEN into LP tokens
-/// 2. Reflect babyTOKEN into DOJO to be sent into fee collector wallet
-/// 3. Burn a portion of babyTOKEN
+/// 1. Liquify reflection token into LP tokens
+/// 2. Reflect reflection token into target token to be sent into fee collector wallet
+/// 3. Burn a portion of reflection token
 pub fn liquify_treasury(
     querier: &QuerierWrapper,
     env: Env,
     storage: &mut dyn Storage,
 ) -> Result<Response, ContractError> {
-    let querier = querier.clone();
+    let querier = *querier;
 
     let router = ROUTER.may_load(storage)?.unwrap_or_default();
     // let admin = ADMIN.may_load(storage)?.unwrap_or_default();
@@ -156,17 +156,18 @@ pub fn liquify_treasury(
 
     let mut messages: Vec<WasmMsg> = vec![];
 
-    let reflect_amt = contract_balance.mul(reflection_rate);
-    let burn_amt = contract_balance.mul(burn_rate);
+    let reflect_amt = contract_balance.mul_floor(reflection_rate);
+    let burn_amt = contract_balance.mul_floor(burn_rate);
+
     let liquidity_amt = contract_balance.sub(reflect_amt).sub(burn_amt);
     // Taxes - 100000
     // Reflection - 50000
     // Burn - 10000
     // Liq amt - 40000
     if liquidity_amt > Uint128::zero() {
-        // Swaps half of babyTOKEN into INJ
+        // Swaps half of reflection token into INJ
         let swap_amount = liquidity_amt.div(Uint128::from(2u128));
-        // Increases allowance of babyTOKEN to liquidity pair contract (allows adding liquidity)
+        // Increases allowance of reflection token to liquidity pair contract (allows adding liquidity)
         messages.push(WasmMsg::Execute {
             contract_addr: token.to_string(),
             msg: to_json_binary(&cw20::Cw20ExecuteMsg::IncreaseAllowance {
@@ -177,7 +178,7 @@ pub fn liquify_treasury(
             funds: vec![],
         });
 
-        // Simulates swapping of half of babyTOKEN into INJ
+        // Simulates swapping of half of reflection token into INJ
         let simulation = simulate(
             &querier,
             liquidity_pair_contract.clone(),
@@ -186,13 +187,13 @@ pub fn liquify_treasury(
                 info: liquidity_pair[0].clone(),
             },
         )?;
-        // We formulate a swap message to swap babyTOKEN into INJ
+        // We formulate a swap message to swap reflection token into INJ
         messages.push(WasmMsg::Execute {
             contract_addr: token.to_string(),
             msg: to_json_binary(&cw20::Cw20ExecuteMsg::Send {
                 contract: liquidity_pair_contract.to_string(),
                 amount: swap_amount,
-                msg: to_json_binary(&dojoswap::pair::Cw20HookMsg::Swap {
+                msg: to_json_binary(&choice::pair::Cw20HookMsg::Swap {
                     belief_price: None,
                     max_spread: None,
                     to: None,
@@ -205,8 +206,8 @@ pub fn liquify_treasury(
         // Formulate variable to allow us to add liquidity to the pool
         let assets: [Asset; 2] = [
             Asset {
-                amount: liquidity_amt.sub(swap_amount), // add remaining amount of babyTOKEN as liquidity
-                info: liquidity_pair[0].clone(),        // babyTOKEN
+                amount: liquidity_amt.sub(swap_amount), // add remaining amount of reflection token as liquidity
+                info: liquidity_pair[0].clone(),        // reflection token
             },
             Asset {
                 amount: simulation.return_amount, // add simulated INJ return amount to be added as liquidity
@@ -214,13 +215,13 @@ pub fn liquify_treasury(
             },
         ];
 
-        // We formulate a ProvideLiquidity message to add babyTOKEN liquidity to the pool
+        // We formulate a ProvideLiquidity message to add reflection token liquidity to the pool
         match reflection_pair[1].clone() {
             AssetInfo::NativeToken { denom } => {
                 // If the asset is a native token, we provide liquidity via a denom message
                 messages.push(WasmMsg::Execute {
                     contract_addr: liquidity_pair_contract.to_string(),
-                    msg: to_json_binary(&dojoswap::pair::ExecuteMsg::ProvideLiquidity {
+                    msg: to_json_binary(&choice::pair::ExecuteMsg::ProvideLiquidity {
                         assets,
                         receiver: None,
                         deadline: None,
@@ -242,7 +243,7 @@ pub fn liquify_treasury(
                 });
                 messages.push(WasmMsg::Execute {
                     contract_addr: liquidity_pair_contract.to_string(),
-                    msg: to_json_binary(&dojoswap::pair::ExecuteMsg::ProvideLiquidity {
+                    msg: to_json_binary(&choice::pair::ExecuteMsg::ProvideLiquidity {
                         assets,
                         receiver: None,
                         deadline: None,
@@ -255,31 +256,42 @@ pub fn liquify_treasury(
     }
 
     if reflect_amt > Uint128::zero() {
-        // 1. swap babyToken into INJ
-        // 2. swap INJ into reflection target token (DOJO)
-        // 3. sends reflection token to fee collector
-        let operations = vec![
-            dojoswap::router::SwapOperation::DojoSwap {
-                offer_asset_info: dojoswap::asset::AssetInfo::Token {
-                    contract_addr: token.to_string(),
-                },
-                ask_asset_info: reflection_pair[1].clone(),
+        let self_token_info = AssetInfo::Token {
+            contract_addr: token.to_string(),
+        };
+        // 1. Define the first swap operation, which is always required.
+        // This swaps your reflection token into the intermediate asset (e.g., INJ).
+        let first_op = choice::router::SwapOperation::Choice {
+            offer_asset_info: choice::asset::AssetInfo::Token {
+                contract_addr: token.to_string(),
             },
-            dojoswap::router::SwapOperation::DojoSwap {
+            ask_asset_info: reflection_pair[1].clone(),
+        };
+
+        // 2. Start with a mutable vector containing only the first operation.
+        let mut operations = vec![first_op];
+
+        // 3. Only add the second swap if the final target is a different token.
+        if reflection_pair[0] != self_token_info {
+            // 4. If they are different, add the second swap operation.
+            // This swaps the intermediate asset (e.g., INJ) into the final reward (e.g., DOJO).
+            let second_op = choice::router::SwapOperation::Choice {
                 offer_asset_info: reflection_pair[1].clone(),
                 ask_asset_info: reflection_pair[0].clone(),
-            },
-        ];
-        // Executes a sell of babyTOKEN into INJ, then INJ into reflection target token (DOJO) via router contract
+            };
+            operations.push(second_op);
+        }
+
+        // 5. Execute the swap(s). The `operations` vector now contains either one or two steps.
         messages.push(WasmMsg::Execute {
             contract_addr: token.to_string(),
             msg: to_json_binary(&cw20::Cw20ExecuteMsg::Send {
                 contract: router.to_string(),
                 amount: reflect_amt,
-                msg: to_json_binary(&dojoswap::router::ExecuteMsg::ExecuteSwapOperations {
+                msg: to_json_binary(&choice::router::ExecuteMsg::ExecuteSwapOperations {
                     operations,
                     minimum_receive: None,
-                    to: None, // reflected token is sent here into treasury
+                    to: None, // target token is sent here into treasury
                     deadline: None,
                 })?,
             })?,
@@ -288,7 +300,7 @@ pub fn liquify_treasury(
     }
 
     if burn_amt > Uint128::zero() {
-        // Burns babyTOKEN
+        // Burn
         messages.push(WasmMsg::Execute {
             contract_addr: token.to_string(),
             msg: to_json_binary(&cw20::Cw20ExecuteMsg::Burn { amount: burn_amt })?,
@@ -301,7 +313,7 @@ pub fn liquify_treasury(
     Ok(res)
 }
 
-/// Used to simulate swap operations against DojoSwap pair
+/// Used to simulate swap operations against choice pair
 pub fn simulate(
     querier: &QuerierWrapper,
     pair_contract: String,
@@ -326,7 +338,7 @@ pub fn query_balance(querier: &QuerierWrapper, token: Addr, address: Addr) -> St
 }
 
 // Check below for pair ordering
-// 1. This contract address (babyToken)
+// 1. This contract address (reflection token)
 // 2. The quote token (inj)
 pub fn set_liquidity_pair(
     deps: DepsMut,
@@ -369,7 +381,7 @@ pub fn set_liquidity_pair(
         }
     };
 
-    LIQUIDTY_TOKEN.save(deps.storage, &response.liquidity_token.to_string())?;
+    LIQUIDITY_TOKEN.save(deps.storage, &response.liquidity_token.to_string())?;
 
     response
         .asset_infos
@@ -387,7 +399,7 @@ pub fn set_liquidity_pair(
 }
 
 // Check below for pair ordering
-// 1. The reflection token (DOJO)
+// 1. The target token (DOJO)
 // 2. The quote token (inj)
 pub fn set_reflection_pair(
     deps: DepsMut,
@@ -434,7 +446,7 @@ pub fn set_reflection_pair(
     Ok(Response::default())
 }
 
-/// Sets minimum babyTOKEN required to liquify
+/// Sets minimum reflection token required to liquify
 pub fn set_min_liquify_amt(
     deps: DepsMut,
     _env: Env,
@@ -447,46 +459,93 @@ pub fn set_min_liquify_amt(
     Ok(Response::default())
 }
 
-/// Withdraws a token of your choice from contract, but not allowed to withdraw LP
+/// Withdraws a CW20 or Native token of your choice from the contract.
+/// It is not allowed to withdraw the LP token itself.
 pub fn withdraw_token(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
-    token: Addr,
+    asset: AssetInfo,
 ) -> Result<Response, ContractError> {
     ensure_admin(&deps, &info)?;
-    // Prevents liquidity token from being removed
-    if token.to_string() == LIQUIDTY_TOKEN.may_load(deps.storage)?.unwrap_or_default() {
-        return Err(ContractError::Std(StdError::generic_err(
-            "Unauthorized: not allowed to withdraw LP",
-        )));
+
+    // Load the LP token address from storage. Based on Choice, this will be a CW20 address.
+    let lp_token_addr = LIQUIDITY_TOKEN.may_load(deps.storage)?.unwrap_or_default();
+    let mut messages: Vec<CosmosMsg> = vec![];
+    let mut response = Response::new();
+
+    match asset {
+        AssetInfo::Token { contract_addr } => {
+            // --- CW20 TOKEN LOGIC ---
+
+            // Prevents the LP token from being withdrawn
+            if contract_addr == lp_token_addr {
+                return Err(ContractError::Std(StdError::generic_err(
+                    "Unauthorized: not allowed to withdraw LP token",
+                )));
+            }
+
+            // Query the balance of the CW20 token
+            let balance: cw20::BalanceResponse = deps.querier.query_wasm_smart(
+                contract_addr.clone(),
+                &cw20::Cw20QueryMsg::Balance {
+                    address: env.contract.address.to_string(),
+                },
+            )?;
+
+            if balance.balance.is_zero() {
+                return Err(ContractError::Std(StdError::generic_err(
+                    "No CW20 balance to withdraw",
+                )));
+            }
+
+            // Create a CW20 transfer message
+            messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: contract_addr.to_string(),
+                msg: to_json_binary(&cw20::Cw20ExecuteMsg::Transfer {
+                    recipient: info.sender.to_string(),
+                    amount: balance.balance,
+                })?,
+                funds: vec![],
+            }));
+
+            response = response.add_attribute("withdraw_cw20_token", contract_addr.to_string());
+            response = response.add_attribute("withdraw_amount", balance.balance);
+        }
+        AssetInfo::NativeToken { denom } => {
+            // --- NATIVE TOKEN LOGIC ---
+
+            // Query the contract's native balance for the specified denomination
+            let balance = deps
+                .querier
+                .query_balance(env.contract.address, denom.clone())?;
+
+            if balance.amount.is_zero() {
+                return Err(ContractError::Std(StdError::generic_err(
+                    "No native balance to withdraw",
+                )));
+            }
+
+            // Create a BankMsg to send the native coins to the admin
+            messages.push(CosmosMsg::Bank(BankMsg::Send {
+                to_address: info.sender.to_string(),
+                amount: vec![balance.clone()],
+            }));
+
+            response = response.add_attribute("withdraw_native_token", balance.denom);
+            response = response.add_attribute("withdraw_amount", balance.amount);
+        }
     }
 
-    let response: cw20::BalanceResponse = deps.querier.query_wasm_smart(
-        token.clone(),
-        &cw20::Cw20QueryMsg::Balance {
-            address: env.contract.address.to_string(),
-        },
-    )?;
-
-    let res = Response::new()
-        .add_attribute("withdraw_token", response.balance)
-        .add_message(WasmMsg::Execute {
-            contract_addr: token.to_string(),
-            msg: to_json_binary(&cw20::Cw20ExecuteMsg::Transfer {
-                recipient: info.sender.to_string(),
-                amount: response.balance,
-            })?,
-            funds: vec![],
-        });
-
-    Ok(res)
+    Ok(response
+        .add_messages(messages)
+        .add_attribute("action", "withdraw_token"))
 }
 
 /// Ensures only admins can use this function
 pub fn ensure_admin(deps: &DepsMut, info: &MessageInfo) -> Result<Response, ContractError> {
     let admin = ADMIN.may_load(deps.storage)?.unwrap_or_default();
-    if info.sender != admin {
+    if info.sender.to_string() != admin {
         return Err(ContractError::Std(StdError::generic_err(
             "Unauthorized: not admin",
         )));

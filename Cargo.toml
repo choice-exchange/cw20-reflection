@@ -1,7 +1,9 @@
 [workspace]
 members = ["packages/*", "contracts/*"]
 
-[profile.release.package.dojoswap]
+resolver = "2" 
+
+[profile.release.package.choice]
 opt-level = 3
 debug = false
 debug-assertions = false
@@ -9,6 +11,12 @@ codegen-units = 1
 incremental = false
 
 [profile.release]
+opt-level = 3
+debug = false
 rpath = false
 lto = true
+debug-assertions = false
+codegen-units = 1
+panic = 'abort'
+incremental = false
 overflow-checks = true

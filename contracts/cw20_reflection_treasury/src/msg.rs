@@ -1,7 +1,7 @@
+use choice::asset::AssetInfo;
 use cosmwasm_std::Addr;
 use cosmwasm_std::Binary;
 use cosmwasm_std::Uint128;
-use dojoswap::asset::AssetInfo;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -27,11 +27,8 @@ pub enum ExecuteMsg {
     SetMinLiquify {
         min_liquify_amt: Uint128,
     },
-    // SetToken {
-    //     address: Addr,
-    // },
     WithdrawToken {
-        token: Addr,
+        asset: AssetInfo,
     },
     Liquify {},
 }
@@ -39,8 +36,6 @@ pub enum ExecuteMsg {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
-    /// Returns the current balance of the given address, 0 if unset.
-    /// Return type: BalanceResponse.
     Balance {},
 }
 
@@ -74,5 +69,5 @@ pub struct Cw20ReceiveMsg {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Cw20HookMsg {
-    Liquify {}
+    Liquify {},
 }

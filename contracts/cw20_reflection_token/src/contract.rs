@@ -1,4 +1,4 @@
-use std::ops::{Mul, Sub};
+use std::ops::Sub;
 use std::str::FromStr;
 
 #[cfg(not(feature = "library"))]
@@ -18,7 +18,7 @@ use cw20_base::contract::{
     create_accounts, execute_burn, execute_mint, execute_update_marketing, execute_upload_logo,
     query_balance, query_download_logo, query_marketing_info, query_minter, query_token_info,
 };
-use cw20_base::enumerable::{query_all_accounts, query_all_allowances};
+use cw20_base::enumerable::{query_all_accounts, query_owner_allowances};
 
 use crate::msg::{
     ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg, QueryTaxResponse, TreasuryExecuteMsg,
@@ -29,7 +29,7 @@ use cw20_base::ContractError;
 use cw_storage_plus::{Item, Map};
 
 // version info for migration info
-const CONTRACT_NAME: &str = "dojoswap:reflection";
+const CONTRACT_NAME: &str = "choice:reflection";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub const TAX_RATE: Item<Decimal> = Item::new("tax_rate");
@@ -152,9 +152,7 @@ pub fn execute_transfer(
     amount: Uint128,
 ) -> Result<Response, ContractError> {
     ensure_antiwhale(&deps, info.sender.to_string(), amount)?;
-    if amount == Uint128::zero() {
-        return Err(ContractError::InvalidZeroAmount {});
-    }
+
     // If whitelisetd, we simply do not apply taxes
     let recipient_whitelist = WHITELIST
         .may_load(deps.storage, recipient.clone())?
@@ -227,9 +225,7 @@ pub fn execute_send(
     msg: Binary,
 ) -> Result<Response, ContractError> {
     ensure_antiwhale(&deps, info.sender.to_string(), amount)?;
-    if amount == Uint128::zero() {
-        return Err(ContractError::InvalidZeroAmount {});
-    }
+
     let recipient_whitelist = WHITELIST
         .may_load(deps.storage, contract.clone())?
         .unwrap_or_default();
@@ -543,7 +539,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             owner,
             start_after,
             limit,
-        } => to_json_binary(&query_all_allowances(deps, owner, start_after, limit)?),
+        } => to_json_binary(&query_owner_allowances(deps, owner, start_after, limit)?),
         QueryMsg::AllAccounts { start_after, limit } => {
             to_json_binary(&query_all_accounts(deps, start_after, limit)?)
         }
@@ -563,10 +559,11 @@ pub fn query_tax(storage: &dyn Storage, amount: Uint128) -> Result<QueryTaxRespo
     let tax_rate = TAX_RATE.may_load(storage)?.unwrap();
     let burn_rate = BURN_RATE.may_load(storage)?.unwrap();
 
-    let taxed_amount = amount.mul(tax_rate);
+    let taxed_amount = amount.mul_floor(tax_rate);
+
     let after_tax = amount.sub(taxed_amount);
-    let reflection_amount = taxed_amount.mul(reflection_rate);
-    let burn_amount = taxed_amount.mul(burn_rate);
+    let reflection_amount = taxed_amount.mul_floor(reflection_rate);
+    let burn_amount = taxed_amount.mul_floor(burn_rate);
     let liquidity_amount = taxed_amount.sub(reflection_amount).sub(burn_amount);
 
     Ok(QueryTaxResponse {
@@ -649,7 +646,7 @@ pub fn set_whitelist(
 /// This is used to ensure that only the admin can execute certain functions
 pub fn ensure_admin(deps: &DepsMut, info: &MessageInfo) -> Result<Response, ContractError> {
     let admin = ADMIN.may_load(deps.storage)?.unwrap_or_default();
-    if info.sender != admin {
+    if info.sender != deps.api.addr_validate(&admin)? {
         return Err(ContractError::Std(StdError::generic_err(
             "Unauthorized: not admin",
         )));
@@ -669,7 +666,7 @@ pub fn ensure_antiwhale(
     let whitelist = WHITELIST.may_load(deps.storage, from)?.unwrap_or(false);
 
     // Whitelisted contracts can bypass antiwhale, inclusive of treasury contract
-    if transfer_balance >= token_info.total_supply.mul(transfer_rate) && !whitelist {
+    if transfer_balance >= token_info.total_supply.mul_floor(transfer_rate) && !whitelist {
         return Err(ContractError::Std(StdError::generic_err(
             "Unauthorized: anti-whale triggered",
         )));
@@ -729,7 +726,7 @@ pub fn migrate_treasury(
 ) -> Result<Response, ContractError> {
     let treasury = TREASURY.load(deps.storage)?;
     let admin = ADMIN.load(deps.storage)?;
-    if info.sender.to_string() != admin.to_string() {
+    if info.sender.as_str() != admin.as_str() {
         return Err(ContractError::Std(StdError::generic_err("Not admin")));
     }
 

@@ -1,13 +1,11 @@
 use crate::asset::{Asset, AssetInfo, AssetInfoRaw, AssetRaw, PairInfo};
 use crate::mock_querier::mock_dependencies;
-use crate::querier::{
-    query_all_balances, query_balance, query_pair_info, query_token_balance, query_token_info,
-};
+use crate::querier::{query_balance, query_pair_info, query_token_balance, query_token_info};
 
 use cosmwasm_std::testing::MOCK_CONTRACT_ADDR;
 use cosmwasm_std::{
-    coin, to_binary, Addr, Api, BankMsg, Coin, CosmosMsg, MessageInfo, StdError, SubMsg, Uint128,
-    WasmMsg,
+    coin, to_json_binary, Addr, Api, BankMsg, Coin, CosmosMsg, MessageInfo, StdError, SubMsg,
+    Uint128, WasmMsg,
 };
 use cw20::Cw20ExecuteMsg;
 
@@ -50,34 +48,6 @@ fn balance_querier() {
 }
 
 #[test]
-fn all_balances_querier() {
-    let deps = mock_dependencies(&[
-        Coin {
-            denom: "uusd".to_string(),
-            amount: Uint128::from(200u128),
-        },
-        Coin {
-            denom: "ukrw".to_string(),
-            amount: Uint128::from(300u128),
-        },
-    ]);
-
-    assert_eq!(
-        query_all_balances(&deps.as_ref().querier, Addr::unchecked(MOCK_CONTRACT_ADDR),).unwrap(),
-        vec![
-            Coin {
-                denom: "uusd".to_string(),
-                amount: Uint128::from(200u128),
-            },
-            Coin {
-                denom: "ukrw".to_string(),
-                amount: Uint128::from(300u128),
-            }
-        ]
-    );
-}
-
-#[test]
 fn supply_querier() {
     let mut deps = mock_dependencies(&[]);
 
@@ -101,8 +71,13 @@ fn supply_querier() {
 
 #[test]
 fn test_asset_info() {
+    let mut deps = mock_dependencies(&[Coin {
+        denom: "uusd".to_string(),
+        amount: Uint128::from(123u128),
+    }]);
+
     let token_info: AssetInfo = AssetInfo::Token {
-        contract_addr: "asset0000".to_string(),
+        contract_addr: deps.api.addr_make("asset0000").to_string(),
     };
     let native_token_info: AssetInfo = AssetInfo::NativeToken {
         denom: "uusd".to_string(),
@@ -111,22 +86,18 @@ fn test_asset_info() {
     assert!(!token_info.equal(&native_token_info));
 
     assert!(!token_info.equal(&AssetInfo::Token {
-        contract_addr: "asset0001".to_string(),
+        contract_addr: deps.api.addr_make("asset0001").to_string(),
     }));
 
     assert!(token_info.equal(&AssetInfo::Token {
-        contract_addr: "asset0000".to_string(),
+        contract_addr: deps.api.addr_make("asset0000").to_string(),
     }));
 
     assert!(native_token_info.is_native_token());
     assert!(!token_info.is_native_token());
 
-    let mut deps = mock_dependencies(&[Coin {
-        denom: "uusd".to_string(),
-        amount: Uint128::from(123u128),
-    }]);
     deps.querier.with_token_balances(&[(
-        &"asset0000".to_string(),
+        &deps.api.addr_make("asset0000").to_string(),
         &[
             (&MOCK_CONTRACT_ADDR.to_string(), &Uint128::from(123u128)),
             (&"addr00000".to_string(), &Uint128::from(123u128)),
@@ -195,7 +166,7 @@ fn test_asset() {
             .unwrap(),
         CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: "asset0000".to_string(),
-            msg: to_binary(&Cw20ExecuteMsg::Transfer {
+            msg: to_json_binary(&Cw20ExecuteMsg::Transfer {
                 recipient: "addr0000".to_string(),
                 amount: Uint128::from(123123u128),
             })
@@ -210,7 +181,7 @@ fn test_asset() {
             .unwrap(),
         SubMsg::new(CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: "asset0000".to_string(),
-            msg: to_binary(&Cw20ExecuteMsg::Transfer {
+            msg: to_json_binary(&Cw20ExecuteMsg::Transfer {
                 recipient: "addr0000".to_string(),
                 amount: Uint128::from(123123u128),
             })
@@ -318,7 +289,7 @@ fn test_asset_to_raw() {
     let token_asset = Asset {
         amount: Uint128::from(1u128),
         info: AssetInfo::Token {
-            contract_addr: "contract0000".to_string(),
+            contract_addr: deps.api.addr_make("contract0000").to_string(),
         },
     };
 
@@ -329,7 +300,10 @@ fn test_asset_to_raw() {
         AssetRaw {
             amount: Uint128::from(1u128),
             info: AssetInfoRaw::Token {
-                contract_addr: deps.api.addr_canonicalize("contract0000").unwrap()
+                contract_addr: deps
+                    .api
+                    .addr_canonicalize(&deps.api.addr_make("contract0000").to_string())
+                    .unwrap()
             }
         }
     );
@@ -356,18 +330,30 @@ fn test_asset_info_raw_equal() {
 
     let deps = mock_dependencies(&[]);
     assert!(!native_asset_info_raw.equal(&AssetInfoRaw::Token {
-        contract_addr: deps.api.addr_canonicalize("contract0000").unwrap()
+        contract_addr: deps
+            .api
+            .addr_canonicalize(&deps.api.addr_make("contract0000").to_string())
+            .unwrap()
     }));
 
     let token_asset_info_raw = AssetInfoRaw::Token {
-        contract_addr: deps.api.addr_canonicalize("contract0000").unwrap(),
+        contract_addr: deps
+            .api
+            .addr_canonicalize(&deps.api.addr_make("contract0000").to_string())
+            .unwrap(),
     };
     assert!(token_asset_info_raw.equal(&AssetInfoRaw::Token {
-        contract_addr: deps.api.addr_canonicalize("contract0000").unwrap()
+        contract_addr: deps
+            .api
+            .addr_canonicalize(&deps.api.addr_make("contract0000").to_string())
+            .unwrap()
     }));
 
     assert!(!token_asset_info_raw.equal(&AssetInfoRaw::Token {
-        contract_addr: deps.api.addr_canonicalize("contract000").unwrap()
+        contract_addr: deps
+            .api
+            .addr_canonicalize(&deps.api.addr_make("contract000").to_string())
+            .unwrap()
     }));
 
     assert!(!token_asset_info_raw.equal(&AssetInfoRaw::NativeToken {
@@ -376,10 +362,10 @@ fn test_asset_info_raw_equal() {
 }
 
 #[test]
-fn query_dojoswap_pair_contract() {
+fn query_choice_pair_contract() {
     let mut deps = mock_dependencies(&[]);
 
-    deps.querier.with_dojoswap_factory(
+    deps.querier.with_choice_factory(
         &[(
             &"asset0000uusd".to_string(),
             &PairInfo {
@@ -413,6 +399,12 @@ fn query_dojoswap_pair_contract() {
     )
     .unwrap();
 
-    assert_eq!(pair_info.contract_addr, Addr::unchecked("pair0000"),);
-    assert_eq!(pair_info.liquidity_token, Addr::unchecked("liquidity0000"),);
+    assert_eq!(
+        pair_info.contract_addr,
+        Addr::unchecked("pair0000").to_string(),
+    );
+    assert_eq!(
+        pair_info.liquidity_token,
+        Addr::unchecked("liquidity0000").to_string(),
+    );
 }

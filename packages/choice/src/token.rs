@@ -2,7 +2,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use cosmwasm_std::{StdError, StdResult, Uint128};
-use cw20::{Cw20Coin, MinterResponse, Logo};
+use cw20::{Cw20Coin, Logo, MinterResponse};
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]
 pub struct InstantiateMarketingInfo {
@@ -83,7 +83,7 @@ mod test {
             }),
             name: "test_token".to_string(),
             symbol: "TNT".to_string(),
-            marketing: None
+            marketing: None,
         };
 
         assert_eq!(msg.get_cap(), Some(Uint128::from(1u128)))
@@ -100,7 +100,7 @@ mod test {
             }),
             name: "test_token".to_string(),
             symbol: "TNT".to_string(),
-            marketing: None
+            marketing: None,
         };
 
         assert_eq!(valid_msg.validate(), Ok(()));
@@ -114,7 +114,7 @@ mod test {
             }),
             name: "a".to_string(),
             symbol: "TNT".to_string(),
-            marketing: None
+            marketing: None,
         };
 
         assert_eq!(
@@ -133,7 +133,7 @@ mod test {
             }),
             name: "test_token".to_string(),
             symbol: "TN".to_string(),
-            marketing: None
+            marketing: None,
         };
 
         assert_eq!(
@@ -152,7 +152,7 @@ mod test {
             }),
             name: "test_token".to_string(),
             symbol: "TNT".to_string(),
-            marketing: None
+            marketing: None,
         };
 
         assert_eq!(

@@ -26,7 +26,6 @@ Before we begin, it is important to understand the rules of engagement of the CW
 - When using `send` or `send_from`, the DEDUCTED AMOUNT is relayed via the Cw20ReceiveMsg. This means developers need not account for the deducted amount manually via their contracts.
 - Whitelisted EOAs are exempt from taxes
 - Anti-whale mechanism has been added to prevent over-transferring of too huge of a supply. This prevents wild fluctuations resulting from over auto-liquidity mechanisms
-- Standard was built against DojoSwap's DEX/AMM, customisations can be coded in to utilise other DEX-es as well
 
 ### Messages
 

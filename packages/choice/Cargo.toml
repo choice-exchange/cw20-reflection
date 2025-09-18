@@ -1,16 +1,15 @@
 [package]
-name = "cw20-reflection-token"
+name = "choice"
 version = "0.0.1"
 authors = []
 edition = "2021"
-description = "Backward compatible implementation of a CosmWasm-20 compliant reflection token"
-license = "MIT"
+description = "Common choice types"
+license = "Apache-2.0"
 repository = "https://github.com/choice-exchange/cw20-reflection"
-homepage = "https://cosmwasm.com"
-documentation = "https://docs.cosmwasm.com"
+homepage = "https://choice.exchange"
+documentation = "https://choice.gitbook.io/choice"
 
-[lib]
-crate-type = ["cdylib", "rlib"]
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
 library = []
@@ -18,7 +17,6 @@ library = []
 [dependencies]
 cw2                = { version = "2.0.0" }
 cw20               = { version = "2.0.0" }
-cw20-base          = { version = "2.0.0" }
 cosmwasm-schema    = { version = "2.2.2" }
 cosmwasm-std       = { version = "2.2.2", features = [
     "abort",
@@ -37,5 +35,8 @@ serde-json-wasm    = { version = "1.0.0" }
 serde_json         = { version = "1.0.140" }
 
 hex               = { version = "0.4.3" }
+
+ed25519-zebra = { version = "4.1.0", features = ["alloc"] }
+
 
 [dev-dependencies]
