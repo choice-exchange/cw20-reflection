@@ -41,7 +41,6 @@ pub const ADMIN: Item<String> = Item::new("admin");
 pub const LAST_LIQUIFY: Item<u64> = Item::new("last_liquify");
 pub const TREASURY: Item<String> = Item::new("treasury");
 pub const WHITELIST: Map<String, bool> = Map::new("whitelist");
-pub const TRANSFER_FROM_WHITELIST: Map<String, bool> = Map::new("transfer_from_whitelist");
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -302,16 +301,18 @@ pub fn execute_transfer_from(
     amount: Uint128,
 ) -> Result<Response, ContractError> {
     ensure_antiwhale(&deps, info.sender.to_string(), amount)?;
-    let is_from_whitelisted = TRANSFER_FROM_WHITELIST
-        .may_load(deps.storage, info.sender.to_string())?
-        .unwrap_or(false);
+
+    let owner_whitelist = WHITELIST
+        .may_load(deps.storage, owner.clone())?
+        .unwrap_or_default();
     let recipient_whitelist = WHITELIST
         .may_load(deps.storage, recipient.clone())?
         .unwrap_or_default();
     let sender_whitelist = WHITELIST
         .may_load(deps.storage, info.sender.to_string())?
         .unwrap_or_default();
-    let whitelisted = recipient_whitelist || sender_whitelist || is_from_whitelisted;
+
+    let whitelisted = owner_whitelist || recipient_whitelist || sender_whitelist;
     let treasury = TREASURY.may_load(deps.storage)?.unwrap_or_default();
     let rcpt_addr = deps.api.addr_validate(&recipient)?;
     let owner_addr = deps.api.addr_validate(&owner)?;
@@ -337,7 +338,7 @@ pub fn execute_transfer_from(
     )?;
 
     let mut messages = vec![];
-    if !recipient_whitelist && !sender_whitelist && !is_from_whitelisted {
+    if !recipient_whitelist && !sender_whitelist {
         BALANCES.update(
             deps.storage,
             &deps.api.addr_validate(&treasury)?,
@@ -377,16 +378,19 @@ pub fn execute_send_from(
     msg: Binary,
 ) -> Result<Response, ContractError> {
     ensure_antiwhale(&deps, info.sender.to_string(), amount)?;
-    let is_from_whitelisted = TRANSFER_FROM_WHITELIST
-        .may_load(deps.storage, info.sender.to_string())?
-        .unwrap_or(false);
+
+    let owner_whitelist = WHITELIST
+        .may_load(deps.storage, owner.clone())?
+        .unwrap_or_default();
     let recipient_whitelist = WHITELIST
         .may_load(deps.storage, contract.clone())?
         .unwrap_or_default();
     let sender_whitelist = WHITELIST
         .may_load(deps.storage, info.sender.to_string())?
         .unwrap_or_default();
-    let whitelisted = recipient_whitelist || sender_whitelist || is_from_whitelisted;
+
+    let whitelisted = owner_whitelist || recipient_whitelist || sender_whitelist;
+
     let treasury = TREASURY.may_load(deps.storage)?.unwrap_or_default();
     let rcpt_addr = deps.api.addr_validate(&contract)?;
     let owner_addr = deps.api.addr_validate(&owner)?;
@@ -404,6 +408,7 @@ pub fn execute_send_from(
             Ok(balance.unwrap_or_default().checked_sub(amount)?)
         },
     )?;
+
     BALANCES.update(
         deps.storage,
         &rcpt_addr,
@@ -413,7 +418,7 @@ pub fn execute_send_from(
     )?;
 
     let mut messages = vec![];
-    if !recipient_whitelist && !sender_whitelist && !is_from_whitelisted {
+    if !recipient_whitelist && !sender_whitelist {
         BALANCES.update(
             deps.storage,
             &deps.api.addr_validate(&treasury)?,
