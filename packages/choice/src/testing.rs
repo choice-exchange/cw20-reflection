@@ -302,7 +302,7 @@ fn test_asset_to_raw() {
             info: AssetInfoRaw::Token {
                 contract_addr: deps
                     .api
-                    .addr_canonicalize(&deps.api.addr_make("contract0000").to_string())
+                    .addr_canonicalize(deps.api.addr_make("contract0000").as_ref())
                     .unwrap()
             }
         }
@@ -332,27 +332,27 @@ fn test_asset_info_raw_equal() {
     assert!(!native_asset_info_raw.equal(&AssetInfoRaw::Token {
         contract_addr: deps
             .api
-            .addr_canonicalize(&deps.api.addr_make("contract0000").to_string())
+            .addr_canonicalize(deps.api.addr_make("contract0000").as_ref())
             .unwrap()
     }));
 
     let token_asset_info_raw = AssetInfoRaw::Token {
         contract_addr: deps
             .api
-            .addr_canonicalize(&deps.api.addr_make("contract0000").to_string())
+            .addr_canonicalize(deps.api.addr_make("contract0000").as_ref())
             .unwrap(),
     };
     assert!(token_asset_info_raw.equal(&AssetInfoRaw::Token {
         contract_addr: deps
             .api
-            .addr_canonicalize(&deps.api.addr_make("contract0000").to_string())
+            .addr_canonicalize(deps.api.addr_make("contract0000").as_ref())
             .unwrap()
     }));
 
     assert!(!token_asset_info_raw.equal(&AssetInfoRaw::Token {
         contract_addr: deps
             .api
-            .addr_canonicalize(&deps.api.addr_make("contract000").to_string())
+            .addr_canonicalize(deps.api.addr_make("contract000").as_ref())
             .unwrap()
     }));
 
