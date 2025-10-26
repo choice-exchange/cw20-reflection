@@ -472,6 +472,7 @@ dependencies = [
  "cw2",
  "cw20",
  "cw20-base",
+ "ed25519-zebra",
  "hex",
  "schemars",
  "serde",
