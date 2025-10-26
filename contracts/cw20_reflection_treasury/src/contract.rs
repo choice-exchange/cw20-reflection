@@ -13,7 +13,8 @@ use cw20::{BalanceResponse, Cw20ExecuteMsg};
 use cw2::set_contract_version;
 
 use crate::msg::{
-    Cw20HookMsg, Cw20ReceiveMsg, ExecuteMsg, GetTokenResponse, InstantiateMsg, MigrateMsg, QueryMsg, TokenQueryMsg
+    Cw20HookMsg, Cw20ReceiveMsg, ExecuteMsg, GetTokenResponse, InstantiateMsg, MigrateMsg,
+    QueryMsg, TokenQueryMsg,
 };
 use choice::asset::{Asset, AssetInfo, PairInfo};
 use choice::pair::QueryMsg as PairQueryMsg;
@@ -87,7 +88,7 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::Balance {} => {
             let token: Addr = TOKEN.load(deps.storage)?;
             to_json_binary(&query_balance(&deps.querier, token, env.contract.address)?)
-        },
+        }
         QueryMsg::GetToken {} => to_json_binary(&query_token(deps.storage)?),
     }
 }

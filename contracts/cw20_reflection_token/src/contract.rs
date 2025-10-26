@@ -21,7 +21,8 @@ use cw20_base::contract::{
 use cw20_base::enumerable::{query_all_accounts, query_owner_allowances};
 
 use crate::msg::{
-    ExecuteMsg, GetTreasuryResponse, InstantiateMsg, MigrateMsg, QueryMsg, QueryTaxResponse, TreasuryExecuteMsg, TreasuryInstantiateMsg
+    ExecuteMsg, GetTreasuryResponse, InstantiateMsg, MigrateMsg, QueryMsg, QueryTaxResponse,
+    TreasuryExecuteMsg, TreasuryInstantiateMsg,
 };
 use cw20_base::state::{MinterData, TokenInfo, BALANCES, LOGO, MARKETING_INFO, TOKEN_INFO};
 use cw20_base::ContractError;
@@ -553,7 +554,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::QueryRates {} => to_json_binary(&query_rate(deps.storage)?),
         QueryMsg::GetWhitelist { address } => {
             to_json_binary(&query_whitelist(deps.storage, address)?)
-        },
+        }
         QueryMsg::GetTreasury {} => to_json_binary(&query_treasury(deps.storage)?),
     }
 }
