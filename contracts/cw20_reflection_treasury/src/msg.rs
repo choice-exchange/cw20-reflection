@@ -37,6 +37,7 @@ pub enum ExecuteMsg {
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
     Balance {},
+    GetToken {},
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug, Default)]
@@ -45,6 +46,11 @@ pub struct QueryTaxResponse {
     pub after_tax: Uint128,
     pub reflection_amount: Uint128,
     pub liquidity_amount: Uint128,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct GetTokenResponse {
+    pub address: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug, Default)]

@@ -21,8 +21,7 @@ use cw20_base::contract::{
 use cw20_base::enumerable::{query_all_accounts, query_owner_allowances};
 
 use crate::msg::{
-    ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg, QueryTaxResponse, TreasuryExecuteMsg,
-    TreasuryInstantiateMsg,
+    ExecuteMsg, GetTreasuryResponse, InstantiateMsg, MigrateMsg, QueryMsg, QueryTaxResponse, TreasuryExecuteMsg, TreasuryInstantiateMsg
 };
 use cw20_base::state::{MinterData, TokenInfo, BALANCES, LOGO, MARKETING_INFO, TOKEN_INFO};
 use cw20_base::ContractError;
@@ -554,8 +553,16 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::QueryRates {} => to_json_binary(&query_rate(deps.storage)?),
         QueryMsg::GetWhitelist { address } => {
             to_json_binary(&query_whitelist(deps.storage, address)?)
-        }
+        },
+        QueryMsg::GetTreasury {} => to_json_binary(&query_treasury(deps.storage)?),
     }
+}
+
+pub fn query_treasury(storage: &dyn Storage) -> Result<GetTreasuryResponse, StdError> {
+    let treasury_addr = TREASURY.load(storage)?;
+    Ok(GetTreasuryResponse {
+        address: treasury_addr,
+    })
 }
 
 /// Used to calculate the amount of taxes to be paid, to be used in all transfer functions
