@@ -13,7 +13,8 @@ use cw20::{BalanceResponse, Cw20ExecuteMsg};
 use cw2::set_contract_version;
 
 use crate::msg::{
-    Cw20HookMsg, Cw20ReceiveMsg, ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg, TokenQueryMsg,
+    Cw20HookMsg, Cw20ReceiveMsg, ExecuteMsg, GetTokenResponse, InstantiateMsg, MigrateMsg,
+    QueryMsg, TokenQueryMsg,
 };
 use choice::asset::{Asset, AssetInfo, PairInfo};
 use choice::pair::QueryMsg as PairQueryMsg;
@@ -76,7 +77,6 @@ pub fn execute(
         ExecuteMsg::SetMinLiquify { min_liquify_amt } => {
             set_min_liquify_amt(deps, env, info, min_liquify_amt)
         }
-        // ExecuteMsg::SetToken { address } => set_token(deps, env, info, address),
         ExecuteMsg::Liquify {} => liquify_treasury(&deps.querier, env, deps.storage),
         ExecuteMsg::WithdrawToken { asset } => withdraw_token(deps, env, info, asset),
     }
@@ -89,7 +89,15 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
             let token: Addr = TOKEN.load(deps.storage)?;
             to_json_binary(&query_balance(&deps.querier, token, env.contract.address)?)
         }
+        QueryMsg::GetToken {} => to_json_binary(&query_token(deps.storage)?),
     }
+}
+
+pub fn query_token(storage: &dyn Storage) -> StdResult<GetTokenResponse> {
+    let token_addr = TOKEN.load(storage)?;
+    Ok(GetTokenResponse {
+        address: token_addr.to_string(),
+    })
 }
 
 pub fn receive_cw20(

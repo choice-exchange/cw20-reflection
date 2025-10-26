@@ -225,6 +225,7 @@ pub enum QueryMsg {
     GetWhitelist {
         address: String,
     },
+    GetTreasury {},
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug, Default)]
@@ -244,4 +245,9 @@ pub struct MigrateMsg {
 #[serde(rename_all = "snake_case")]
 pub enum TreasuryExecuteMsg {
     Liquify {},
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct GetTreasuryResponse {
+    pub address: String,
 }
