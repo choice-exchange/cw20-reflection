@@ -132,16 +132,29 @@ pub fn liquify_treasury(
     env: Env,
     storage: &mut dyn Storage,
 ) -> Result<Response, ContractError> {
+    let liquidity_pair = match LIQUIDITY_PAIR.may_load(storage)? {
+        Some(pair) => pair,
+        None => return Ok(Response::default()), // Exit early
+    };
+    let liquidity_pair_contract = match LIQUIDITY_PAIR_CONTRACT.may_load(storage)? {
+        Some(contract) => contract,
+        None => return Ok(Response::default()), // Exit early
+    };
+    let reflection_pair = match REFLECTION_PAIR.may_load(storage)? {
+        Some(pair) => pair,
+        None => return Ok(Response::default()), // Exit early
+    };
+    let router = match ROUTER.may_load(storage)? {
+        Some(r) => r,
+        None => return Ok(Response::default()), // Exit early
+    };
+
     let querier = *querier;
 
-    let router = ROUTER.may_load(storage)?.unwrap_or_default();
     // let admin = ADMIN.may_load(storage)?.unwrap_or_default();
     let token = TOKEN.load(storage)?;
     let contract_balance = query_balance(&querier, token.clone(), env.contract.address.clone())?;
 
-    let liquidity_pair = LIQUIDITY_PAIR.may_load(storage)?.unwrap();
-    let liquidity_pair_contract = LIQUIDITY_PAIR_CONTRACT.may_load(storage)?.unwrap();
-    let reflection_pair = REFLECTION_PAIR.may_load(storage)?.unwrap();
     let min_liquify_amt = MIN_LIQUIFY_AMT
         .may_load(storage)?
         .unwrap_or(Uint128::zero());

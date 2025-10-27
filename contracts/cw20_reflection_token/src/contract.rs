@@ -186,7 +186,7 @@ pub fn execute_transfer(
 
     // Assuming no whitelist, we apply taxes, and immediately add them to the treasury by modifying balance variables
     // We also send generate a transfer teransaction log under `TransferEvent` to ensure explorer tracks transfer properly
-    if !recipient_whitelist && !sender_whitelist {
+    if !whitelisted {
         BALANCES.update(
             deps.storage,
             &deps.api.addr_validate(&treasury)?,
@@ -254,7 +254,7 @@ pub fn execute_send(
     )?;
 
     let mut messages = vec![];
-    if !recipient_whitelist && !sender_whitelist {
+    if !whitelisted {
         BALANCES.update(
             deps.storage,
             &deps.api.addr_validate(&treasury)?,
@@ -300,7 +300,7 @@ pub fn execute_transfer_from(
     recipient: String,
     amount: Uint128,
 ) -> Result<Response, ContractError> {
-    ensure_antiwhale(&deps, info.sender.to_string(), amount)?;
+    ensure_antiwhale(&deps, owner.clone(), amount)?;
 
     let owner_whitelist = WHITELIST
         .may_load(deps.storage, owner.clone())?
@@ -338,7 +338,7 @@ pub fn execute_transfer_from(
     )?;
 
     let mut messages = vec![];
-    if !recipient_whitelist && !sender_whitelist {
+    if !whitelisted {
         BALANCES.update(
             deps.storage,
             &deps.api.addr_validate(&treasury)?,
@@ -418,7 +418,7 @@ pub fn execute_send_from(
     )?;
 
     let mut messages = vec![];
-    if !recipient_whitelist && !sender_whitelist {
+    if !whitelisted {
         BALANCES.update(
             deps.storage,
             &deps.api.addr_validate(&treasury)?,
@@ -676,13 +676,23 @@ pub fn ensure_antiwhale(
 ) -> Result<Response, ContractError> {
     let token_info = TOKEN_INFO.may_load(deps.storage)?.unwrap();
     let transfer_rate = MAX_TRANSFER_SUPPLY_RATE.may_load(deps.storage)?.unwrap();
-    let whitelist = WHITELIST.may_load(deps.storage, from)?.unwrap_or(false);
+    let whitelist = WHITELIST
+        .may_load(deps.storage, from.clone())?
+        .unwrap_or(false);
+
+    // Calculate the exact anti-whale limit in token units
+    let limit = token_info.total_supply.mul_floor(transfer_rate);
 
     // Whitelisted contracts can bypass antiwhale, inclusive of treasury contract
-    if transfer_balance >= token_info.total_supply.mul_floor(transfer_rate) && !whitelist {
-        return Err(ContractError::Std(StdError::generic_err(
-            "Unauthorized: anti-whale triggered",
-        )));
+    if transfer_balance >= limit && !whitelist {
+        // Updated, more descriptive error message
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Anti-whale triggered :: Address Checked: [{}], Whitelist Status: [{}], Amount Transferred: [{}], Anti-Whale Limit: [{}]",
+            from,
+            whitelist,
+            transfer_balance,
+            limit
+        ))));
     }
 
     Ok(Response::default())
