@@ -184,7 +184,7 @@ mod tests {
             })
         );
         assert_eq!(
-            query_balance(&mut deps.as_mut(), &addrs.pair),
+            query_balance(&deps.as_mut(), &addrs.pair),
             Uint128::new(40_000)
         );
     }
