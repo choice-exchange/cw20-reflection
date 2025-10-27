@@ -4,7 +4,7 @@ use std::str::FromStr;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    attr, to_json_binary, Binary, CosmosMsg, Decimal, Deps, DepsMut, Env, MessageInfo, Reply,
+    attr, to_json_binary, Addr, Binary, CosmosMsg, Decimal, Deps, DepsMut, Env, MessageInfo, Reply,
     Response, StdError, StdResult, Storage, SubMsg, SubMsgResponse, Uint128, WasmMsg,
 };
 
@@ -41,6 +41,8 @@ pub const ADMIN: Item<String> = Item::new("admin");
 pub const LAST_LIQUIFY: Item<u64> = Item::new("last_liquify");
 pub const TREASURY: Item<String> = Item::new("treasury");
 pub const WHITELIST: Map<String, bool> = Map::new("whitelist");
+pub const AGGREGATORS: Map<&Addr, bool> = Map::new("aggregators");
+pub const TRANSFER_FROM_RECIPIENT_WHITELIST: Map<&Addr, bool> = Map::new("tf_rcpt_wl");
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -211,7 +213,8 @@ pub fn execute_transfer(
         .add_attribute("action", "transfer")
         .add_attribute("from", info.sender)
         .add_attribute("to", recipient)
-        .add_attribute("amount", outgoing_amount);
+        .add_attribute("amount", outgoing_amount)
+        .add_attribute("post_tax_amount", outgoing_amount);
     Ok(res)
 }
 
@@ -280,6 +283,7 @@ pub fn execute_send(
         .add_attribute("from", &info.sender)
         .add_attribute("to", &contract)
         .add_attribute("amount", outgoing_amount)
+        .add_attribute("post_tax_amount", outgoing_amount)
         .add_message(
             // We do not modify the send message, but we allow the hooked contract to calculate taxes against this contract
             Cw20ReceiveMsg {
@@ -312,9 +316,16 @@ pub fn execute_transfer_from(
         .may_load(deps.storage, info.sender.to_string())?
         .unwrap_or_default();
 
-    let whitelisted = owner_whitelist || recipient_whitelist || sender_whitelist;
+    // The special check for our new whitelist: Is the recipient of this TransferFrom call exempt?
+    let recipient_addr = deps.api.addr_validate(&recipient)?;
+    let is_tf_recipient_whitelisted =
+        TRANSFER_FROM_RECIPIENT_WHITELIST.has(deps.storage, &recipient_addr);
+
+    // The final whitelisted decision now includes our new condition.
+    let whitelisted =
+        owner_whitelist || recipient_whitelist || sender_whitelist || is_tf_recipient_whitelisted;
+
     let treasury = TREASURY.may_load(deps.storage)?.unwrap_or_default();
-    let rcpt_addr = deps.api.addr_validate(&recipient)?;
     let owner_addr = deps.api.addr_validate(&owner)?;
     let taxes = query_tax(deps.storage, amount)?;
     let outgoing_amount = if whitelisted { amount } else { taxes.after_tax };
@@ -331,7 +342,7 @@ pub fn execute_transfer_from(
     )?;
     BALANCES.update(
         deps.storage,
-        &rcpt_addr,
+        &recipient_addr,
         |balance: Option<Uint128>| -> StdResult<_> {
             Ok(balance.unwrap_or_default() + outgoing_amount)
         },
@@ -364,6 +375,7 @@ pub fn execute_transfer_from(
         attr("to", recipient),
         attr("by", info.sender),
         attr("amount", outgoing_amount),
+        attr("post_tax_amount", outgoing_amount.to_string()),
     ]);
     Ok(res)
 }
@@ -444,6 +456,7 @@ pub fn execute_send_from(
         attr("to", &contract),
         attr("by", &info.sender),
         attr("amount", outgoing_amount),
+        attr("post_tax_amount", outgoing_amount.to_string()),
     ];
 
     // create a send message
@@ -459,6 +472,125 @@ pub fn execute_send_from(
         .add_message(msg)
         .add_attributes(attrs);
     Ok(res)
+}
+
+/// A simple, tax-free transfer used by trusted aggregators.
+pub fn execute_transfer_tax_exempt(
+    deps: DepsMut,
+    info: MessageInfo,
+    recipient: String,
+    amount: Uint128,
+) -> Result<Response, ContractError> {
+    let rcpt_addr = deps.api.addr_validate(&recipient)?;
+
+    BALANCES.update(
+        deps.storage,
+        &info.sender,
+        |balance: Option<Uint128>| -> StdResult<_> {
+            Ok(balance.unwrap_or_default().checked_sub(amount)?)
+        },
+    )?;
+    BALANCES.update(
+        deps.storage,
+        &rcpt_addr,
+        |balance: Option<Uint128>| -> StdResult<_> { Ok(balance.unwrap_or_default() + amount) },
+    )?;
+
+    Ok(Response::new()
+        .add_attribute("action", "transfer")
+        .add_attribute("from", info.sender)
+        .add_attribute("to", recipient)
+        .add_attribute("amount", amount))
+}
+
+/// A simple, tax-free send used by trusted aggregators.
+pub fn execute_send_tax_exempt(
+    deps: DepsMut,
+    info: MessageInfo,
+    contract: String,
+    amount: Uint128,
+    msg: Binary,
+) -> Result<Response, ContractError> {
+    let rcpt_addr = deps.api.addr_validate(&contract)?;
+
+    BALANCES.update(
+        deps.storage,
+        &info.sender,
+        |balance: Option<Uint128>| -> StdResult<_> {
+            Ok(balance.unwrap_or_default().checked_sub(amount)?)
+        },
+    )?;
+    BALANCES.update(
+        deps.storage,
+        &rcpt_addr,
+        |balance: Option<Uint128>| -> StdResult<_> { Ok(balance.unwrap_or_default() + amount) },
+    )?;
+
+    Ok(Response::new()
+        .add_attribute("action", "send")
+        .add_attribute("from", &info.sender)
+        .add_attribute("to", &contract)
+        .add_attribute("amount", amount)
+        .add_message(
+            Cw20ReceiveMsg {
+                sender: info.sender.into(),
+                amount,
+                msg,
+            }
+            .into_cosmos_msg(contract)?,
+        ))
+}
+
+pub fn add_aggregator(
+    deps: DepsMut,
+    info: MessageInfo,
+    address: String,
+) -> Result<Response, ContractError> {
+    ensure_admin(&deps, &info)?;
+    let addr = deps.api.addr_validate(&address)?;
+    AGGREGATORS.save(deps.storage, &addr, &true)?;
+    Ok(Response::new()
+        .add_attribute("action", "add_aggregator")
+        .add_attribute("address", address))
+}
+
+pub fn remove_aggregator(
+    deps: DepsMut,
+    info: MessageInfo,
+    address: String,
+) -> Result<Response, ContractError> {
+    ensure_admin(&deps, &info)?;
+    let addr = deps.api.addr_validate(&address)?;
+    AGGREGATORS.remove(deps.storage, &addr);
+    Ok(Response::new()
+        .add_attribute("action", "remove_aggregator")
+        .add_attribute("address", address))
+}
+
+pub fn add_transfer_from_recipient(
+    deps: DepsMut,
+    info: MessageInfo,
+    address: String,
+) -> Result<Response, ContractError> {
+    ensure_admin(&deps, &info)?;
+    let addr = deps.api.addr_validate(&address)?;
+    TRANSFER_FROM_RECIPIENT_WHITELIST.save(deps.storage, &addr, &true)?;
+    Ok(Response::new()
+        .add_attribute("action", "add_transfer_from_recipient")
+        .add_attribute("address", address))
+}
+
+pub fn remove_transfer_from_recipient(
+    deps: DepsMut,
+    info: MessageInfo,
+    address: String,
+) -> Result<Response, ContractError> {
+    ensure_admin(&deps, &info)?;
+    let addr = deps.api.addr_validate(&address)?;
+    TRANSFER_FROM_RECIPIENT_WHITELIST.remove(deps.storage, &addr);
+    Ok(Response::new()
+        .add_attribute("action", "remove_transfer_from_recipient")
+        .add_attribute("address", address))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -528,6 +660,36 @@ pub fn execute(
             generate_transfer_event(deps, info, env, from, to, amount)
         }
         ExecuteMsg::MigrateTreasury { code_id } => migrate_treasury(deps, env, info, code_id),
+
+        // admin add an remove trusted aggregator contracts
+        ExecuteMsg::AddAggregator { address } => add_aggregator(deps, info, address),
+        ExecuteMsg::RemoveAggregator { address } => remove_aggregator(deps, info, address),
+
+        // allow aggregation contracts to do tax free transfers
+        ExecuteMsg::TaxExemptTransfer { recipient, amount } => {
+            if !AGGREGATORS.has(deps.storage, &info.sender) {
+                return Err(ContractError::Unauthorized {});
+            }
+            execute_transfer_tax_exempt(deps, info, recipient, amount)
+        }
+        ExecuteMsg::TaxExemptSend {
+            contract,
+            amount,
+            msg,
+        } => {
+            if !AGGREGATORS.has(deps.storage, &info.sender) {
+                return Err(ContractError::Unauthorized {});
+            }
+            execute_send_tax_exempt(deps, info, contract, amount, msg)
+        }
+
+        // To enable tax free liquidity provision
+        ExecuteMsg::AddTransferFromRecipient { address } => {
+            add_transfer_from_recipient(deps, info, address)
+        }
+        ExecuteMsg::RemoveTransferFromRecipient { address } => {
+            remove_transfer_from_recipient(deps, info, address)
+        }
     }
 }
 

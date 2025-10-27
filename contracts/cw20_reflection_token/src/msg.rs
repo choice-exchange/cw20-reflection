@@ -124,6 +124,37 @@ pub enum ExecuteMsg {
     MigrateTreasury {
         code_id: u64,
     },
+    // --- Admin-Only Aggregator Management ---
+    /// Add a trusted aggregator contract that can perform tax-exempt transfers/sends.
+    AddAggregator {
+        address: String,
+    },
+    /// Remove a trusted aggregator contract.
+    RemoveAggregator {
+        address: String,
+    },
+
+    // --- Aggregator-Only Messages ---
+    /// Called by a registered aggregator to send tokens to the end-user tax-free.
+    TaxExemptTransfer {
+        recipient: String,
+        amount: Uint128,
+    },
+    /// Called by a registered aggregator to send tokens to a liquidity pool tax-free.
+    TaxExemptSend {
+        contract: String,
+        amount: Uint128,
+        msg: Binary,
+    },
+
+    /// Whitelists a contract (e.g., a pair) to be a tax-free recipient for TransferFrom calls ONLY.
+    AddTransferFromRecipient {
+        address: String,
+    },
+    /// Removes a contract from the TransferFrom recipient whitelist.
+    RemoveTransferFromRecipient {
+        address: String,
+    },
 }
 
 impl InstantiateMsg {
