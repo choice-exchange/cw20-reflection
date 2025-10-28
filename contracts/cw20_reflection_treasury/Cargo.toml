@@ -36,8 +36,8 @@ serde              = { version = "1.0.219", default-features = false, features =
 serde-json-wasm    = { version = "1.0.0" }
 serde_json         = { version = "1.0.140" }
 
-hex               = { version = "0.4.3" }
+hex                = { version = "0.4.3" }
 
-choice               = { path = "../../packages/choice", version = "0.0.1"}
+choice             = { path = "../../packages/choice", version = "0.0.1"}
 
 [dev-dependencies]

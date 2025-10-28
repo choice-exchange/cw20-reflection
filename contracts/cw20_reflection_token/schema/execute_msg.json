@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "Cw20ExecuteMsg",
+  "title": "ExecuteMsg",
   "oneOf": [
     {
       "description": "Transfer is a base message to move tokens to another account without triggering actions",
@@ -269,28 +269,6 @@
       "additionalProperties": false
     },
     {
-      "description": "Only with the \"mintable\" extension. The current minter may set a new minter. Setting the minter to None will remove the token's minter forever.",
-      "type": "object",
-      "required": [
-        "update_minter"
-      ],
-      "properties": {
-        "update_minter": {
-          "type": "object",
-          "properties": {
-            "new_minter": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
-          "additionalProperties": false
-        }
-      },
-      "additionalProperties": false
-    },
-    {
       "description": "Only with the \"marketing\" extension. If authorized, updates marketing metadata. Setting None/null for any of these will leave it unchanged. Setting Some(\"\") will clear this field on the contract storage",
       "type": "object",
       "required": [
@@ -339,11 +317,269 @@
         }
       },
       "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "set_tax_rate"
+      ],
+      "properties": {
+        "set_tax_rate": {
+          "type": "object",
+          "required": [
+            "antiwhale_rate",
+            "burn_rate",
+            "global_rate",
+            "reflection_rate"
+          ],
+          "properties": {
+            "antiwhale_rate": {
+              "$ref": "#/definitions/Decimal"
+            },
+            "burn_rate": {
+              "$ref": "#/definitions/Decimal"
+            },
+            "global_rate": {
+              "$ref": "#/definitions/Decimal"
+            },
+            "reflection_rate": {
+              "$ref": "#/definitions/Decimal"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "set_whitelist"
+      ],
+      "properties": {
+        "set_whitelist": {
+          "type": "object",
+          "required": [
+            "enable",
+            "user"
+          ],
+          "properties": {
+            "enable": {
+              "type": "boolean"
+            },
+            "user": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "transfer_event"
+      ],
+      "properties": {
+        "transfer_event": {
+          "type": "object",
+          "required": [
+            "amount",
+            "from",
+            "to"
+          ],
+          "properties": {
+            "amount": {
+              "$ref": "#/definitions/Uint128"
+            },
+            "from": {
+              "type": "string"
+            },
+            "to": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "migrate_treasury"
+      ],
+      "properties": {
+        "migrate_treasury": {
+          "type": "object",
+          "required": [
+            "code_id"
+          ],
+          "properties": {
+            "code_id": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "description": "Add a trusted aggregator contract that can perform tax-exempt transfers/sends.",
+      "type": "object",
+      "required": [
+        "add_aggregator"
+      ],
+      "properties": {
+        "add_aggregator": {
+          "type": "object",
+          "required": [
+            "address"
+          ],
+          "properties": {
+            "address": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "description": "Remove a trusted aggregator contract.",
+      "type": "object",
+      "required": [
+        "remove_aggregator"
+      ],
+      "properties": {
+        "remove_aggregator": {
+          "type": "object",
+          "required": [
+            "address"
+          ],
+          "properties": {
+            "address": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "description": "Called by a registered aggregator to send tokens to the end-user tax-free.",
+      "type": "object",
+      "required": [
+        "tax_exempt_transfer"
+      ],
+      "properties": {
+        "tax_exempt_transfer": {
+          "type": "object",
+          "required": [
+            "amount",
+            "recipient"
+          ],
+          "properties": {
+            "amount": {
+              "$ref": "#/definitions/Uint128"
+            },
+            "recipient": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "description": "Called by a registered aggregator to send tokens to a liquidity pool tax-free.",
+      "type": "object",
+      "required": [
+        "tax_exempt_send"
+      ],
+      "properties": {
+        "tax_exempt_send": {
+          "type": "object",
+          "required": [
+            "amount",
+            "contract",
+            "msg"
+          ],
+          "properties": {
+            "amount": {
+              "$ref": "#/definitions/Uint128"
+            },
+            "contract": {
+              "type": "string"
+            },
+            "msg": {
+              "$ref": "#/definitions/Binary"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "description": "Whitelists a contract (e.g., a pair) to be a tax-free recipient for TransferFrom calls ONLY.",
+      "type": "object",
+      "required": [
+        "add_transfer_from_recipient"
+      ],
+      "properties": {
+        "add_transfer_from_recipient": {
+          "type": "object",
+          "required": [
+            "address"
+          ],
+          "properties": {
+            "address": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "description": "Removes a contract from the TransferFrom recipient whitelist.",
+      "type": "object",
+      "required": [
+        "remove_transfer_from_recipient"
+      ],
+      "properties": {
+        "remove_transfer_from_recipient": {
+          "type": "object",
+          "required": [
+            "address"
+          ],
+          "properties": {
+            "address": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
     }
   ],
   "definitions": {
     "Binary": {
       "description": "Binary is a wrapper around Vec<u8> to add base64 de/serialization with serde. It also adds some helper methods to help encode inline.\n\nThis is only needed as serde-json-{core,wasm} has a horrible encoding for Vec<u8>. See also <https://github.com/CosmWasm/cosmwasm/blob/main/docs/MESSAGE_TYPES.md>.",
+      "type": "string"
+    },
+    "Decimal": {
+      "description": "A fixed-point decimal value with 18 fractional digits, i.e. Decimal(1_000_000_000_000_000_000) == 1.0\n\nThe greatest possible value that can be represented is 340282366920938463463.374607431768211455 (which is (2^128 - 1) / 10^18)",
       "type": "string"
     },
     "EmbeddedLogo": {

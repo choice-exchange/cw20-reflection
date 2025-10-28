@@ -3,12 +3,23 @@
   "title": "InstantiateMsg",
   "type": "object",
   "required": [
+    "admin",
+    "cw20_code_id",
     "decimals",
     "initial_balances",
     "name",
+    "router",
     "symbol"
   ],
   "properties": {
+    "admin": {
+      "type": "string"
+    },
+    "cw20_code_id": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
+    },
     "decimals": {
       "type": "integer",
       "format": "uint8",
@@ -41,6 +52,9 @@
       ]
     },
     "name": {
+      "type": "string"
+    },
+    "router": {
       "type": "string"
     },
     "symbol": {
