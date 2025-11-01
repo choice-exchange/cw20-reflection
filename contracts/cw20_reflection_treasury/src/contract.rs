@@ -79,7 +79,23 @@ pub fn execute(
         }
         ExecuteMsg::Liquify {} => liquify_treasury(&deps.querier, env, deps.storage),
         ExecuteMsg::WithdrawToken { asset } => withdraw_token(deps, env, info, asset),
+        ExecuteMsg::TransferAdmin { new_admin } => {
+            transfer_admin(deps, info, new_admin)
+        }
     }
+}
+
+pub fn transfer_admin(
+    deps: DepsMut,
+    info: MessageInfo,
+    new_admin: String,
+) -> Result<Response, ContractError> {
+    ensure_admin(&deps, &info)?;
+    let new_admin_addr = deps.api.addr_validate(&new_admin)?;
+    ADMIN.save(deps.storage, &new_admin_addr.to_string())?;
+    Ok(Response::new()
+        .add_attribute("action", "transfer_admin")
+        .add_attribute("new_admin", new_admin))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]

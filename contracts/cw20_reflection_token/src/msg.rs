@@ -155,6 +155,9 @@ pub enum ExecuteMsg {
     RemoveTransferFromRecipient {
         address: String,
     },
+    TransferAdmin {
+        new_admin: String,
+    },
 }
 
 impl InstantiateMsg {
