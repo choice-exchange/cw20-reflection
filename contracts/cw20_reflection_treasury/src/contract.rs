@@ -79,9 +79,7 @@ pub fn execute(
         }
         ExecuteMsg::Liquify {} => liquify_treasury(&deps.querier, env, deps.storage),
         ExecuteMsg::WithdrawToken { asset } => withdraw_token(deps, env, info, asset),
-        ExecuteMsg::TransferAdmin { new_admin } => {
-            transfer_admin(deps, info, new_admin)
-        }
+        ExecuteMsg::TransferAdmin { new_admin } => transfer_admin(deps, info, new_admin),
     }
 }
 
