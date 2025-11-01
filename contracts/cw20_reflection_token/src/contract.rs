@@ -228,9 +228,7 @@ pub fn execute(
             remove_transfer_from_recipient(deps, info, address)
         }
 
-        ExecuteMsg::TransferAdmin { new_admin } => {
-            transfer_admin(deps, info, new_admin)
-        }
+        ExecuteMsg::TransferAdmin { new_admin } => transfer_admin(deps, info, new_admin),
     }
 }
 
