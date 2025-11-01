@@ -12,7 +12,7 @@ As much as possible, the original CW20 standard has been left untouched. Instead
 
 ## Design
 
-The standard has been built in a way to utilise 2 contracts:
+The standard has been built in a way to utilize 2 contracts:
 
 - Reflection treasury: Any reflection and taxes are processed in the treasury contract. The CW20 Taxed Token is the owner of the treasury. Developers are able to retrieve the reflected amounts out of the treasury, and separately airdrop the amounts to their users.
 - CW20 Taxed Token: This contract is a modified version of the CW20 to allow tax-on-transfer to happen. All `ExecuteMsg` and `QueryMsg` are preserved. Additional function signatures have been added to cater for the taxation logic.
@@ -159,4 +159,3 @@ Finally, you must tell the Treasury which liquidity pools to use for its operati
   }
 }
 ```
-

@@ -130,6 +130,138 @@ pub fn instantiate(
     )))
 }
 
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn execute(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    msg: ExecuteMsg,
+) -> Result<Response, ContractError> {
+    match msg {
+        ExecuteMsg::Transfer { recipient, amount } => {
+            execute_transfer(deps, env, info, recipient, amount)
+        }
+        ExecuteMsg::Burn { amount } => execute_burn(deps, env, info, amount),
+        ExecuteMsg::Send {
+            contract,
+            amount,
+            msg,
+        } => execute_send(deps, env, info, contract, amount, msg),
+        ExecuteMsg::Mint { recipient, amount } => execute_mint(deps, env, info, recipient, amount),
+        ExecuteMsg::IncreaseAllowance {
+            spender,
+            amount,
+            expires,
+        } => execute_increase_allowance(deps, env, info, spender, amount, expires),
+        ExecuteMsg::DecreaseAllowance {
+            spender,
+            amount,
+            expires,
+        } => execute_decrease_allowance(deps, env, info, spender, amount, expires),
+        ExecuteMsg::TransferFrom {
+            owner,
+            recipient,
+            amount,
+        } => execute_transfer_from(deps, env, info, owner, recipient, amount),
+        ExecuteMsg::BurnFrom { owner, amount } => execute_burn_from(deps, env, info, owner, amount),
+        ExecuteMsg::SendFrom {
+            owner,
+            contract,
+            amount,
+            msg,
+        } => execute_send_from(deps, env, info, owner, contract, amount, msg),
+        ExecuteMsg::UpdateMarketing {
+            project,
+            description,
+            marketing,
+        } => execute_update_marketing(deps, env, info, project, description, marketing),
+        ExecuteMsg::UploadLogo(logo) => execute_upload_logo(deps, env, info, logo),
+
+        // Reflection features
+        ExecuteMsg::SetWhitelist { user, enable } => set_whitelist(deps, info, user, enable),
+        ExecuteMsg::SetTaxRate {
+            global_rate,
+            reflection_rate,
+            burn_rate,
+            antiwhale_rate,
+        } => set_tax_rate(
+            deps,
+            env,
+            info,
+            global_rate,
+            reflection_rate,
+            burn_rate,
+            antiwhale_rate,
+        ),
+        ExecuteMsg::TransferEvent { from, to, amount } => {
+            generate_transfer_event(deps, info, env, from, to, amount)
+        }
+        ExecuteMsg::MigrateTreasury { code_id } => migrate_treasury(deps, env, info, code_id),
+
+        // admin add an remove trusted aggregator contracts
+        ExecuteMsg::AddAggregator { address } => add_aggregator(deps, info, address),
+        ExecuteMsg::RemoveAggregator { address } => remove_aggregator(deps, info, address),
+
+        // allow aggregation contracts to do tax free transfers
+        ExecuteMsg::TaxExemptTransfer { recipient, amount } => {
+            if !AGGREGATORS.has(deps.storage, &info.sender) {
+                return Err(ContractError::Unauthorized {});
+            }
+            execute_transfer_tax_exempt(deps, info, recipient, amount)
+        }
+        ExecuteMsg::TaxExemptSend {
+            contract,
+            amount,
+            msg,
+        } => {
+            if !AGGREGATORS.has(deps.storage, &info.sender) {
+                return Err(ContractError::Unauthorized {});
+            }
+            execute_send_tax_exempt(deps, info, contract, amount, msg)
+        }
+
+        // To enable tax free liquidity provision
+        ExecuteMsg::AddTransferFromRecipient { address } => {
+            add_transfer_from_recipient(deps, info, address)
+        }
+        ExecuteMsg::RemoveTransferFromRecipient { address } => {
+            remove_transfer_from_recipient(deps, info, address)
+        }
+
+        ExecuteMsg::TransferAdmin { new_admin } => {
+            transfer_admin(deps, info, new_admin)
+        }
+    }
+}
+
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
+    match msg {
+        QueryMsg::Balance { address } => to_json_binary(&query_balance(deps, address)?),
+        QueryMsg::TokenInfo {} => to_json_binary(&query_token_info(deps)?),
+        QueryMsg::Minter {} => to_json_binary(&query_minter(deps)?),
+        QueryMsg::Allowance { owner, spender } => {
+            to_json_binary(&query_allowance(deps, owner, spender)?)
+        }
+        QueryMsg::AllAllowances {
+            owner,
+            start_after,
+            limit,
+        } => to_json_binary(&query_owner_allowances(deps, owner, start_after, limit)?),
+        QueryMsg::AllAccounts { start_after, limit } => {
+            to_json_binary(&query_all_accounts(deps, start_after, limit)?)
+        }
+        QueryMsg::MarketingInfo {} => to_json_binary(&query_marketing_info(deps)?),
+        QueryMsg::DownloadLogo {} => to_json_binary(&query_download_logo(deps)?),
+        QueryMsg::QueryTax { amount } => to_json_binary(&query_tax(deps.storage, amount)?),
+        QueryMsg::QueryRates {} => to_json_binary(&query_rate(deps.storage)?),
+        QueryMsg::GetWhitelist { address } => {
+            to_json_binary(&query_whitelist(deps.storage, address)?)
+        }
+        QueryMsg::GetTreasury {} => to_json_binary(&query_treasury(deps.storage)?),
+    }
+}
+
 /// Unwrap a `Reply` object to extract the response
 pub fn unwrap_reply(reply: Reply) -> StdResult<SubMsgResponse> {
     reply.result.into_result().map_err(StdError::generic_err)
@@ -141,6 +273,19 @@ pub fn reply(deps: DepsMut, _env: Env, reply: Reply) -> Result<Response, Contrac
         1 => register_deployment(deps, unwrap_reply(reply)?),
         _id => Err(ContractError::Unauthorized {}),
     }
+}
+
+pub fn transfer_admin(
+    deps: DepsMut,
+    info: MessageInfo,
+    new_admin: String,
+) -> Result<Response, ContractError> {
+    ensure_admin(&deps, &info)?;
+    let new_admin_addr = deps.api.addr_validate(&new_admin)?;
+    ADMIN.save(deps.storage, &new_admin_addr.to_string())?;
+    Ok(Response::new()
+        .add_attribute("action", "transfer_admin")
+        .add_attribute("new_admin", new_admin))
 }
 
 /// Standard CW20 transfer function that is modified to include tax functions, and anti-whale feature
@@ -591,134 +736,6 @@ pub fn remove_transfer_from_recipient(
     Ok(Response::new()
         .add_attribute("action", "remove_transfer_from_recipient")
         .add_attribute("address", address))
-}
-
-#[cfg_attr(not(feature = "library"), entry_point)]
-pub fn execute(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    msg: ExecuteMsg,
-) -> Result<Response, ContractError> {
-    match msg {
-        ExecuteMsg::Transfer { recipient, amount } => {
-            execute_transfer(deps, env, info, recipient, amount)
-        }
-        ExecuteMsg::Burn { amount } => execute_burn(deps, env, info, amount),
-        ExecuteMsg::Send {
-            contract,
-            amount,
-            msg,
-        } => execute_send(deps, env, info, contract, amount, msg),
-        ExecuteMsg::Mint { recipient, amount } => execute_mint(deps, env, info, recipient, amount),
-        ExecuteMsg::IncreaseAllowance {
-            spender,
-            amount,
-            expires,
-        } => execute_increase_allowance(deps, env, info, spender, amount, expires),
-        ExecuteMsg::DecreaseAllowance {
-            spender,
-            amount,
-            expires,
-        } => execute_decrease_allowance(deps, env, info, spender, amount, expires),
-        ExecuteMsg::TransferFrom {
-            owner,
-            recipient,
-            amount,
-        } => execute_transfer_from(deps, env, info, owner, recipient, amount),
-        ExecuteMsg::BurnFrom { owner, amount } => execute_burn_from(deps, env, info, owner, amount),
-        ExecuteMsg::SendFrom {
-            owner,
-            contract,
-            amount,
-            msg,
-        } => execute_send_from(deps, env, info, owner, contract, amount, msg),
-        ExecuteMsg::UpdateMarketing {
-            project,
-            description,
-            marketing,
-        } => execute_update_marketing(deps, env, info, project, description, marketing),
-        ExecuteMsg::UploadLogo(logo) => execute_upload_logo(deps, env, info, logo),
-
-        // Reflection features
-        ExecuteMsg::SetWhitelist { user, enable } => set_whitelist(deps, info, user, enable),
-        ExecuteMsg::SetTaxRate {
-            global_rate,
-            reflection_rate,
-            burn_rate,
-            antiwhale_rate,
-        } => set_tax_rate(
-            deps,
-            env,
-            info,
-            global_rate,
-            reflection_rate,
-            burn_rate,
-            antiwhale_rate,
-        ),
-        ExecuteMsg::TransferEvent { from, to, amount } => {
-            generate_transfer_event(deps, info, env, from, to, amount)
-        }
-        ExecuteMsg::MigrateTreasury { code_id } => migrate_treasury(deps, env, info, code_id),
-
-        // admin add an remove trusted aggregator contracts
-        ExecuteMsg::AddAggregator { address } => add_aggregator(deps, info, address),
-        ExecuteMsg::RemoveAggregator { address } => remove_aggregator(deps, info, address),
-
-        // allow aggregation contracts to do tax free transfers
-        ExecuteMsg::TaxExemptTransfer { recipient, amount } => {
-            if !AGGREGATORS.has(deps.storage, &info.sender) {
-                return Err(ContractError::Unauthorized {});
-            }
-            execute_transfer_tax_exempt(deps, info, recipient, amount)
-        }
-        ExecuteMsg::TaxExemptSend {
-            contract,
-            amount,
-            msg,
-        } => {
-            if !AGGREGATORS.has(deps.storage, &info.sender) {
-                return Err(ContractError::Unauthorized {});
-            }
-            execute_send_tax_exempt(deps, info, contract, amount, msg)
-        }
-
-        // To enable tax free liquidity provision
-        ExecuteMsg::AddTransferFromRecipient { address } => {
-            add_transfer_from_recipient(deps, info, address)
-        }
-        ExecuteMsg::RemoveTransferFromRecipient { address } => {
-            remove_transfer_from_recipient(deps, info, address)
-        }
-    }
-}
-
-#[cfg_attr(not(feature = "library"), entry_point)]
-pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
-    match msg {
-        QueryMsg::Balance { address } => to_json_binary(&query_balance(deps, address)?),
-        QueryMsg::TokenInfo {} => to_json_binary(&query_token_info(deps)?),
-        QueryMsg::Minter {} => to_json_binary(&query_minter(deps)?),
-        QueryMsg::Allowance { owner, spender } => {
-            to_json_binary(&query_allowance(deps, owner, spender)?)
-        }
-        QueryMsg::AllAllowances {
-            owner,
-            start_after,
-            limit,
-        } => to_json_binary(&query_owner_allowances(deps, owner, start_after, limit)?),
-        QueryMsg::AllAccounts { start_after, limit } => {
-            to_json_binary(&query_all_accounts(deps, start_after, limit)?)
-        }
-        QueryMsg::MarketingInfo {} => to_json_binary(&query_marketing_info(deps)?),
-        QueryMsg::DownloadLogo {} => to_json_binary(&query_download_logo(deps)?),
-        QueryMsg::QueryTax { amount } => to_json_binary(&query_tax(deps.storage, amount)?),
-        QueryMsg::QueryRates {} => to_json_binary(&query_rate(deps.storage)?),
-        QueryMsg::GetWhitelist { address } => {
-            to_json_binary(&query_whitelist(deps.storage, address)?)
-        }
-        QueryMsg::GetTreasury {} => to_json_binary(&query_treasury(deps.storage)?),
-    }
 }
 
 pub fn query_treasury(storage: &dyn Storage) -> Result<GetTreasuryResponse, StdError> {

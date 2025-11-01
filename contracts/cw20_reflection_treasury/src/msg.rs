@@ -31,6 +31,9 @@ pub enum ExecuteMsg {
         asset: AssetInfo,
     },
     Liquify {},
+    TransferAdmin {
+        new_admin: String,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
