@@ -6,6 +6,12 @@ The name and design is based on the CW20 standard, with modifications made to al
 The specification is split into multiple sections, a contract may only
 implement some of this functionality, but must implement the base.
 
+## Mainnet Deployment
+
+Reflection Token Code Id: `1893`
+
+Treasury Code Id: `1894`
+
 ## Note
 
 As much as possible, the original CW20 standard has been left untouched. Instead, additional function signatures were added to allow for a "reflection" behavior.

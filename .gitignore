@@ -19,3 +19,5 @@ artifacts
 node_modules/
 .env
 archive
+
+scripts/
